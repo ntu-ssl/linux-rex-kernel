@@ -6,12 +6,13 @@ cpu_count = run_command(
   check: true
 ).stdout().strip()
 
-
+# 'cp', '@SOURCE_ROOT@/scripts/q-script/.config', '@OUTPUT@'
+# 'cp', '@SOURCE_ROOT@/scripts/q-script/.config', '@SOURCE_ROOT@/linux/.config'
 kernel_config = custom_target(
   'kernel-config',
   output: ['.config'],
   command: [
-    'cp', '@SOURCE_ROOT@/scripts/q-script/.config', '@OUTPUT@'
+    'cp', '@SOURCE_ROOT@/scripts/q-script/.rust_available_and_allow_notrace_config', '@SOURCE_ROOT@/build/linux/.config'
   ],
   console: true,
   build_by_default: false
