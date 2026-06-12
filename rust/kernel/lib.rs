@@ -133,6 +133,7 @@ pub mod pwm;
 pub mod rbtree;
 pub mod regulator;
 pub mod revocable;
+pub mod rex_recover;
 pub mod scatterlist;
 pub mod security;
 pub mod seq_file;
@@ -234,6 +235,12 @@ impl ThisModule {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     pr_emerg!("{}\n", info);
+    // Rex driver-side recovery: if the current task armed a recovery
+    // point via `rex_recover::protected_call`, this longjmps back to the
+    // protected-call site (returning -EIO there) and never comes back.
+    // Otherwise it returns and the panic escalates to BUG() as before.
+    // SAFETY: FFI call.
+    unsafe { bindings::rex_driver_try_recover() };
     // SAFETY: FFI call.
     unsafe { bindings::BUG() };
 }

@@ -2184,6 +2184,8 @@ __latent_entropy struct task_struct *copy_process(
 	RCU_INIT_POINTER(p->bpf_storage, NULL);
 	p->bpf_ctx = NULL;
 #endif
+	/* A recovery point refers to the parent's stack; never inherit it. */
+	p->rex_recovery_ctx = NULL;
 
 	unwind_task_init(p);
 

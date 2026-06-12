@@ -60,6 +60,7 @@ struct blk_plug;
 struct bpf_local_storage;
 struct bpf_run_ctx;
 struct bpf_net_context;
+struct rex_driver_recovery_ctx;
 struct capture_control;
 struct cfs_rq;
 struct fs_struct;
@@ -1583,6 +1584,12 @@ struct task_struct {
 #endif
 	/* Used by BPF for per-TASK xdp storage */
 	struct bpf_net_context		*bpf_net_context;
+
+	/*
+	 * Rex driver-side panic recovery point (setjmp context armed by
+	 * rex_driver_protected_call(); see linux/rex_driver_recover.h).
+	 */
+	struct rex_driver_recovery_ctx	*rex_recovery_ctx;
 
 #ifdef CONFIG_KSTACK_ERASE
 	unsigned long			lowest_stack;

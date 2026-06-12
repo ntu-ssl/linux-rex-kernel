@@ -103,3 +103,81 @@ void __noreturn rex_landingpad(void)
 	/* Handle the rest fixups */
 	rex_landingpad_asm();
 }
+
+/*
+ * ── Driver-side panic recovery ──────────────────────────────────────
+ *
+ * See include/linux/rex_driver_recover.h for the design.  The asm
+ * halves live in rex_64.S; this file owns the per-task arming and the
+ * safety guards.
+ */
+#include <linux/preempt.h>
+#include <linux/rex_driver_recover.h>
+#include <linux/sched.h>
+
+/* Errno a recovered (panicked) protected call returns. */
+#define REX_DRIVER_RECOVER_ERRNO (-EIO)
+
+asmlinkage s64 __rex_driver_protected_call(s64 (*func)(void *arg), void *arg,
+					   struct rex_driver_recovery_ctx *ctx);
+asmlinkage void __noreturn
+rex_driver_recovery_landing(struct rex_driver_recovery_ctx *ctx, s64 retval);
+
+noinline s64 rex_driver_protected_call(s64 (*func)(void *arg), void *arg)
+{
+	struct rex_driver_recovery_ctx ctx, *old;
+	s64 ret;
+
+	ctx.preempt_cnt = preempt_count();
+	ctx.irqs_disabled = irqs_disabled();
+
+	/* Arm; keep any outer recovery point so calls can nest. */
+	old = current->rex_recovery_ctx;
+	current->rex_recovery_ctx = &ctx;
+
+	ret = __rex_driver_protected_call(func, arg, &ctx);
+
+	current->rex_recovery_ctx = old;
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rex_driver_protected_call);
+
+void rex_driver_try_recover(void)
+{
+	struct rex_driver_recovery_ctx *ctx = current->rex_recovery_ctx;
+
+	if (!ctx)
+		return;
+
+	/*
+	 * Only recover a panic raised in task context.  A panic in an
+	 * interrupt that happens to hit while this task has a recovery
+	 * point armed belongs to the interrupted context, not to the
+	 * protected call.
+	 */
+	if (!in_task())
+		return;
+
+	/*
+	 * The longjmp skips every cleanup between the panic site and the
+	 * protected-call site.  If the region took a lock or disabled
+	 * interrupts, "recovering" would leak that state and wedge the
+	 * system later; refuse and let the panic escalate to BUG().
+	 */
+	if (preempt_count() != ctx->preempt_cnt ||
+	    (u32)irqs_disabled() != ctx->irqs_disabled) {
+		pr_err("driver recovery refused: atomic state changed inside protected region (preempt %u->%u, irqs_disabled %u->%u)\n",
+		       ctx->preempt_cnt, preempt_count(),
+		       ctx->irqs_disabled, (u32)irqs_disabled());
+		return;
+	}
+
+	/* One-shot: disarm before leaving the panic context. */
+	current->rex_recovery_ctx = NULL;
+
+	pr_warn("recovered Rust driver panic in %s[%d]; protected call returns %d\n",
+		current->comm, task_pid_nr(current), REX_DRIVER_RECOVER_ERRNO);
+
+	rex_driver_recovery_landing(ctx, REX_DRIVER_RECOVER_ERRNO);
+}
+EXPORT_SYMBOL_GPL(rex_driver_try_recover);

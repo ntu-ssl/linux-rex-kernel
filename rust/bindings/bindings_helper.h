@@ -77,6 +77,7 @@
 #include <linux/random.h>
 #include <linux/refcount.h>
 #include <linux/regulator/consumer.h>
+#include <linux/rex_driver_recover.h>
 #include <linux/sched.h>
 #include <linux/security.h>
 #include <linux/slab.h>
